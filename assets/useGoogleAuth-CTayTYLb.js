@@ -1,1 +1,0 @@
-import{n as e,r as t}from"./index-Dw9yNAcp.js";var n=null;function r(){let r=e();t();function i(){if(n)return n;throw Error(`VITE_GOOGLE_CLIENT_ID is not defined`)}function a(){i().requestAccessToken({prompt:r.token?``:`consent`})}function o(){r.clearToken(),n=null}return{login:a,logout:o,isLoggedIn:r.isLoggedIn}}export{r as t};
