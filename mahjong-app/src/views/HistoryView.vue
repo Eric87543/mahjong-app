@@ -28,6 +28,10 @@
       <!-- 季度總計 -->
       <div v-if="seasonTotals.length" class="summary-card">
         <div class="summary-title">{{ selectedSeason }} 季度累計</div>
+        <div class="summary-meta">
+          共 {{ totalGames }} 場・台費合計
+          <span class="chip-score" :class="scoreClass(-totalTable)">{{ totalTable }}</span>
+        </div>
         <div class="score-chips">
           <span v-for="p in seasonTotals" :key="p.name" class="chip">
             <span class="chip-name">{{ p.name }}</span>
@@ -185,6 +189,12 @@ const seasonTotals = computed(() => {
     .sort((a, b) => b.total - a.total)
 })
 
+// 台費總計 & 總場次
+const totalTable = computed(() =>
+  currentSessions.value.reduce((acc, s) => acc + (s.table ?? 0), 0)
+)
+const totalGames = computed(() => currentSessions.value.length)
+
 // 工具函式
 function scoreClass(score: number | undefined) {
   if (score === undefined || score === 0) return 'zero'
@@ -287,7 +297,11 @@ watch(seasonSheetNames, async (names) => {
 }
 .summary-title {
   font-size: 0.78rem; font-weight: 600; color: #57606a;
-  text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 0.6rem;
+  text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 0.3rem;
+}
+.summary-meta {
+  font-size: 0.82rem; color: #57606a; margin-bottom: 0.6rem;
+  display: flex; align-items: center; gap: 0.3rem;
 }
 .score-chips { display: flex; flex-wrap: wrap; gap: 0.4rem 0.75rem; }
 .chip { display: inline-flex; align-items: center; gap: 0.25rem; font-size: 0.85rem; }

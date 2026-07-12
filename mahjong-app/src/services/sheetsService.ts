@@ -139,13 +139,21 @@ export async function getSessionList(
 function sessionToRow(session: Session, playerOrder: string[], headerOrder?: string[]): string[] {
   if (headerOrder && headerOrder.length > 0) {
     // 依 header 順序輸出，讓欄位對齊
-    return headerOrder.map((col) => {
+    const row = headerOrder.map((col) => {
       if (col === 'sessionId') return session.sessionId
       if (col === 'date') return session.date
       if (col === 'table') return String(session.table)
       // 玩家欄
       return session.scores[col] !== undefined ? String(session.scores[col]) : ''
     })
+    // 新玩家（不在 headerOrder 中）的分數附加到行尾
+    const headerSet = new Set(headerOrder)
+    for (const [player, score] of Object.entries(session.scores)) {
+      if (!headerSet.has(player)) {
+        row.push(String(score))
+      }
+    }
+    return row
   }
   // 沒有 header 資訊時的 fallback（新 sheet append 第一筆）
   const scoreValues = playerOrder.map((p) =>
@@ -167,7 +175,31 @@ export async function appendSession(
   session: Session,
   playerOrder: string[],
   headerOrder?: string[],
-): Promise<void> {
+): Promise<{ newPlayers: string[] }> {
+  // 若有新玩家（不在 headerOrder），先把名稱寫進 header row
+  const newPlayers: string[] = []
+  if (headerOrder && headerOrder.length > 0) {
+    const headerSet = new Set(headerOrder)
+    for (const player of Object.keys(session.scores)) {
+      if (!headerSet.has(player)) {
+        newPlayers.push(player)
+      }
+    }
+    if (newPlayers.length > 0) {
+      // 計算新欄位的起始欄號（0-based index → A1 notation）
+      const startColIdx = headerOrder.length
+      const headerValues = newPlayers.map(p => p)
+      const startColLetter = colIndexToLetter(startColIdx)
+      const endColLetter = colIndexToLetter(startColIdx + newPlayers.length - 1)
+      const headerRange = encodeURIComponent(`${sheetName}!${startColLetter}1:${endColLetter}1`)
+      const headerUrl = `${BASE}/v4/spreadsheets/${spreadsheetId}/values/${headerRange}?valueInputOption=USER_ENTERED`
+      await apiFetch(headerUrl, {
+        method: 'PUT',
+        body: JSON.stringify({ values: [headerValues] }),
+      })
+    }
+  }
+
   const range = encodeURIComponent(`${sheetName}!A:AZ`)
   const url =
     `${BASE}/v4/spreadsheets/${spreadsheetId}/values/${range}:append` +
@@ -176,6 +208,19 @@ export async function appendSession(
     method: 'POST',
     body: JSON.stringify({ values: [sessionToRow(session, playerOrder, headerOrder)] }),
   })
+
+  return { newPlayers }
+}
+
+// 欄號 0-based index 轉 A1 notation（0=A, 25=Z, 26=AA, ...）
+function colIndexToLetter(idx: number): string {
+  let result = ''
+  let n = idx
+  do {
+    result = String.fromCharCode(65 + (n % 26)) + result
+    n = Math.floor(n / 26) - 1
+  } while (n >= 0)
+  return result
 }
 
 // ─── updateSession ────────────────────────────────────────────────────────────

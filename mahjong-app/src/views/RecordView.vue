@@ -162,12 +162,20 @@ const authStore = useAuthStore()
 const addingPlayer = ref(false)
 const newPlayerName = ref('')
 const newPlayerInputRef = ref<HTMLInputElement | null>(null)
+// 當次臨時新增的玩家（不寫 localStorage，切換 season 時清空）
+const extraPlayers = ref<string[]>([])
 
-async function confirmAddPlayer() {
+function confirmAddPlayer() {
   const name = newPlayerName.value.trim()
   if (!name) return
-  if (!appStore.players.includes(name)) {
-    appStore.setPlayers([...appStore.players, name])
+  // 尚未在清單中才加入
+  const allNames = [...(appStore.sessionCache[season.value]?.players ?? []), ...extraPlayers.value]
+  if (!allNames.includes(name)) {
+    extraPlayers.value.push(name)
+  }
+  // 若目前選取人數 < 4，自動選取此玩家
+  if (selectedPlayers.value.length < 4 && !selectedPlayers.value.includes(name)) {
+    selectedPlayers.value.push(name)
   }
   newPlayerName.value = ''
   addingPlayer.value = false
@@ -193,22 +201,22 @@ const seasonOptions = computed(() =>
   )
 )
 
-// ── 玩家清單（依歷史場數排序）────────────────────────────
-// 從 sessionCache 統計所有玩家的出場次數
+// ── 玩家清單（只顯示當前 sheet 的玩家，依場數排序）────────────────────────────
 const playerGameCounts = computed<Record<string, number>>(() => {
   const counts: Record<string, number> = {}
-  for (const sheetData of Object.values(appStore.sessionCache)) {
-    for (const s of sheetData.sessions) {
-      for (const p of Object.keys(s.scores)) {
-        counts[p] = (counts[p] ?? 0) + 1
-      }
+  for (const s of appStore.sessionCache[season.value]?.sessions ?? []) {
+    for (const p of Object.keys(s.scores)) {
+      counts[p] = (counts[p] ?? 0) + 1
     }
   }
   return counts
 })
 
 const sortedPlayers = computed<{ name: string; games: number }[]>(() => {
-  return appStore.players
+  const sheetPlayers = appStore.sessionCache[season.value]?.players ?? []
+  // 合併 sheet 玩家 + 當次臨時新增的玩家
+  const allPlayers = [...new Set([...sheetPlayers, ...extraPlayers.value])]
+  return allPlayers
     .map(name => ({ name, games: playerGameCounts.value[name] ?? 0 }))
     .sort((a, b) => b.games - a.games)
 })
@@ -347,8 +355,11 @@ watch(seasonOptions, async (opts) => {
   }
 })
 
-// 切換季度時重新載入 session（供玩家排序用）
+// 切換季度時重新載入 session，並清空選人與臨時玩家
 watch(season, async (s) => {
+  selectedPlayers.value = []
+  extraPlayers.value = []
+  for (const k in scores) delete (scores as Record<string, unknown>)[k]
   if (s && !appStore.sessionCache[s]) {
     try { await appStore.loadSessions(s) } catch { /* ignore */ }
   }

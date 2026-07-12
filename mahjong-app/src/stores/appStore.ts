@@ -78,10 +78,15 @@ export const useAppStore = defineStore('app', () => {
     const playerOrder = cached?.players ?? players.value
     // 使用 sheet 實際的 header 順序，避免欄位錯位
     const headerOrder = cached?.headerOrder
-    await sheetsService.appendSession(spreadsheetId.value, sheetName, session, playerOrder, headerOrder)
+    const { newPlayers } = await sheetsService.appendSession(spreadsheetId.value, sheetName, session, playerOrder, headerOrder)
     // 更新本地 cache
     if (cached) {
       cached.sessions.push({ ...session, rowIndex: cached.sessions.length + 2 })
+      // 若有新玩家，同步更新 cache 的 players 與 headerOrder，讓下次操作欄位對齊
+      if (newPlayers.length > 0) {
+        cached.players = [...cached.players, ...newPlayers]
+        cached.headerOrder = [...(cached.headerOrder ?? []), ...newPlayers]
+      }
     }
   }
 
