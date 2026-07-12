@@ -68,8 +68,8 @@ export const useAppStore = defineStore('app', () => {
 
   async function addSession(sheetName: string, session: Session): Promise<void> {
     if (!spreadsheetId.value) return
-    // 確保 cache 存在（讀取 header 順序用）
-    if (!sessionCache.value[sheetName]) {
+    // 確保 cache 存在且含有 headerOrder；若舊快取沒有則強制重新載入
+    if (!sessionCache.value[sheetName] || !sessionCache.value[sheetName].headerOrder?.length) {
       await sheetsService.getSessionList(spreadsheetId.value, sheetName).then(result => {
         sessionCache.value[sheetName] = result
       }).catch(() => { /* sheet 可能尚不存在，忽略 */ })

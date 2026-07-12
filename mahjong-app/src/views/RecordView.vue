@@ -117,9 +117,9 @@
         </div>
 
         <!-- 總和提示 -->
-        <div v-if="participantCount >= 2" class="balance-row" :class="{ error: !balanceOk }">
+        <div v-if="participantCount >= 1" class="balance-row" :class="{ error: !balanceOk }">
           得分總和：<strong>{{ balance > 0 ? '+' : '' }}{{ balance }}</strong>
-          <span v-if="!balanceOk"> ⚠️ 應為 {{ -table }}</span>
+          <span v-if="!balanceOk"> ⚠️ 四人加台費應為 0（目前 {{ balance + table }}）</span>
           <span v-else> ✓</span>
         </div>
       </div>
@@ -268,14 +268,14 @@ const balance = computed(() =>
   selectedPlayers.value.reduce((acc: number, p) => acc + (scores[p] ?? 0), 0)
 )
 
-// 台費是莊家抽的，四人得分總和應為 -台費
-const balanceOk = computed(() => balance.value === -table.value)
+// 四人得分 + 台費 總和應為 0
+const balanceOk = computed(() => balance.value + table.value === 0)
 
 const canSubmit = computed(() =>
   !!season.value &&
   !!date.value &&
   selectedPlayers.value.length === 4 &&
-  participantCount.value >= 2 &&
+  participantCount.value >= 1 &&
   balanceOk.value
 )
 
