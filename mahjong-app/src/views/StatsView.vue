@@ -515,7 +515,7 @@ watch(seasonSheetNames, async (names) => {
   display: flex;
   flex-direction: column;
   min-height: 100vh;
-  padding-bottom: 64px;
+  padding-bottom: 120px;
   background: #f7f8fa;
 }
 

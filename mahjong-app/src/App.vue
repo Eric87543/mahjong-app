@@ -8,7 +8,7 @@
         <span class="nav-icon">🏠</span>
         <span class="nav-label">主頁</span>
       </RouterLink>
-      <RouterLink to="/record" class="nav-item" active-class="active">
+      <RouterLink v-if="auth.isEditor" to="/record" class="nav-item" active-class="active">
         <span class="nav-icon">✏️</span>
         <span class="nav-label">記錄</span>
       </RouterLink>

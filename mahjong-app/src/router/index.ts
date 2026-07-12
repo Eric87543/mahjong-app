@@ -42,6 +42,9 @@ router.beforeEach((to) => {
   if (to.name !== 'login' && !auth.isLoggedIn) {
     return { name: 'login' }
   }
+  if (to.name === 'login' && auth.isLoggedIn) {
+    return { name: 'home' }
+  }
 })
 
 export default router

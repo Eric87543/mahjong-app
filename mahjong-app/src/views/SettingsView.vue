@@ -5,7 +5,7 @@
     </header>
 
     <main class="settings-main">
-      <!-- ── Spreadsheet ID 區塊 ── -->
+      <!-- ── Spreadsheet ID 區塊（所有登入者可用）── -->
       <section class="card">
         <h2 class="section-title">Google Spreadsheet</h2>
         <p class="section-desc">
@@ -37,8 +37,8 @@
         </p>
       </section>
 
-      <!-- ── 玩家管理區塊 ── -->
-      <section class="card">
+      <!-- ── 玩家管理區塊（僅管理員）── -->
+      <section v-if="authStore.isAdmin" class="card">
         <h2 class="section-title">玩家管理</h2>
         <p class="section-desc">記錄局數時可快速選取的玩家名單。</p>
 
@@ -76,15 +76,29 @@
           <button class="btn btn-ghost" @click="resetToDefaults">恢復預設名單</button>
         </div>
       </section>
+
+      <!-- ── 清除快取區塊（所有登入者可用）── -->
+      <section class="card card-danger">
+        <h2 class="section-title">清除本機快取</h2>
+        <p class="section-desc">清除儲存在瀏覽器的登入 token 與 Sheet ID，下次開啟需重新登入與設定。</p>
+        <button class="btn btn-danger" @click="clearCache">
+          🗑 清除快取並登出
+        </button>
+        <p v-if="clearDone" class="msg msg-success">✅ 已清除，請重新登入。</p>
+      </section>
     </main>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { useAppStore } from '@/stores/appStore'
+import { useAuthStore } from '@/stores/authStore'
 
 const appStore = useAppStore()
+const authStore = useAuthStore()
+const router = useRouter()
 
 // ── Spreadsheet 驗證 ──────────────────────────────────────
 const sheetIdInput = ref(appStore.spreadsheetId)
@@ -138,6 +152,22 @@ function resetToDefaults() {
   appStore.setPlayers([...DEFAULT_PLAYERS])
 }
 
+// ── 清除快取 ──────────────────────────────────────────────
+const clearDone = ref(false)
+
+function clearCache() {
+  // 清除 localStorage 所有本 App 相關資料
+  localStorage.removeItem('gapi_access_token')
+  localStorage.removeItem('gapi_user_email')
+  localStorage.removeItem('mj_spreadsheet_id')
+  // 清除 store 狀態
+  authStore.clearToken()
+  appStore.setSpreadsheetId('')
+  clearDone.value = true
+  // 1.5 秒後跳轉登入頁
+  setTimeout(() => router.push('/login'), 1500)
+}
+
 // 若 spreadsheetId 已存在但 sheetNames 未載入，自動載入
 onMounted(async () => {
   if (appStore.spreadsheetId && appStore.sheetNames.length === 0) {
@@ -160,6 +190,37 @@ onMounted(async () => {
   min-height: 100vh;
   padding-bottom: 80px; /* 底部導覽列高度 */
   background: #f0f2f5;
+}
+
+/* ── 無權限 ── */
+.no-access-wrap {
+  display: flex;
+  justify-content: center;
+  padding: 3rem 1rem;
+}
+.no-access-card {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 2rem 1.5rem;
+  text-align: center;
+  max-width: 320px;
+  width: 100%;
+}
+.no-access-icon {
+  font-size: 2.5rem;
+  line-height: 1;
+  margin-bottom: 0.75rem;
+}
+.no-access-title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #1f2328;
+  margin-bottom: 0.4rem;
+}
+.no-access-desc {
+  font-size: 0.875rem;
+  color: #57606a;
 }
 
 .page-header {
@@ -277,6 +338,20 @@ onMounted(async () => {
   font-size: 0.85rem;
   padding: 0.4rem 1rem;
   min-height: 40px;
+}
+
+.btn-danger {
+  background: #fee2e2;
+  color: #991b1b;
+  border: 1px solid #fca5a5;
+  width: 100%;
+}
+.btn-danger:active {
+  background: #fecaca;
+}
+
+.card-danger {
+  border-color: #fca5a5;
 }
 
 .msg {

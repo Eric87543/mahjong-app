@@ -30,7 +30,7 @@ export const useAppStore = defineStore('app', () => {
   const sheetNames = ref<string[]>([])
 
   // ── 季度總結 cache：key = sheetName（例如 '2026Q1'）
-  const sessionCache = ref<Record<string, { players: string[]; sessions: Session[] }>>({})
+  const sessionCache = ref<Record<string, { players: string[]; sessions: Session[]; headerOrder: string[] }>>({})
 
   // ── 細項 cache：key = detail sheetName（例如 '2026Q1_detail'）
   const handCache = ref<Record<string, HandRecord[]>>({})
@@ -76,10 +76,8 @@ export const useAppStore = defineStore('app', () => {
     }
     const cached = sessionCache.value[sheetName]
     const playerOrder = cached?.players ?? players.value
-    // 從 cache 中取得實際 header 欄位順序
-    const headerOrder = cached?.players
-      ? ['sessionId', 'date', 'table', ...cached.players]
-      : undefined
+    // 使用 sheet 實際的 header 順序，避免欄位錯位
+    const headerOrder = cached?.headerOrder
     await sheetsService.appendSession(spreadsheetId.value, sheetName, session, playerOrder, headerOrder)
     // 更新本地 cache
     if (cached) {
@@ -103,10 +101,8 @@ export const useAppStore = defineStore('app', () => {
     }
     const cached = sessionCache.value[sheetName]
     const playerOrder = cached?.players ?? players.value
-    // 從 cache 中取得實際 header 欄位順序
-    const headerOrder = cached?.players
-      ? ['sessionId', 'date', 'table', ...cached.players]
-      : undefined
+    // 使用 sheet 實際的 header 順序，避免欄位錯位
+    const headerOrder = cached?.headerOrder
 
     // 寫入細項 sheet
     await sheetsService.appendHand(spreadsheetId.value, detailName, hand, playerOrder)

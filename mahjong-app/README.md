@@ -80,10 +80,21 @@ https://<your-github-username>.github.io/mahjong-app/
 ```bash
 # 複製範本
 cp .env.example .env.local
-
-# 編輯 .env.local，填入你的 Client ID
-VITE_GOOGLE_CLIENT_ID=your-google-client-id.apps.googleusercontent.com
 ```
+
+編輯 `.env.local`，填入以下環境變數：
+
+```env
+# Google OAuth Client ID（必填）
+VITE_GOOGLE_CLIENT_ID=your-google-client-id.apps.googleusercontent.com
+
+# 管理員 Email 清單（逗號分隔）
+# 可管理玩家名單；編輯權限由 Google Sheet 共用設定控制
+VITE_ADMIN_EMAILS=your-email@gmail.com
+```
+
+> 💡 Sheet ID 不再寫在環境變數，由使用者第一次登入後在設定頁自行輸入，自動存入瀏覽器 localStorage。
+> 💡 誰可以新增紀錄，直接在 Google Sheet「共用」設定裡將對方加為「編輯者」即可，不需要改程式。
 
 > ⚠️ `.env.local` 已加入 `.gitignore`，不會被推送至 GitHub。
 

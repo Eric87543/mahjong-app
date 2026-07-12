@@ -160,7 +160,7 @@ const groupedSessions = computed<SessionGroup[]>(() =>
       scores: s.scores,
       activePlayers,
     }
-  })
+  }).reverse()
 )
 
 // 某場次的所有 HandRecord
@@ -245,7 +245,7 @@ watch(seasonSheetNames, async (names) => {
 <style scoped>
 .history-view {
   display: flex; flex-direction: column;
-  min-height: 100vh; padding-bottom: 64px;
+  min-height: 100vh;
   background: #f7f8fa;
 }
 
@@ -278,7 +278,7 @@ watch(seasonSheetNames, async (names) => {
 .spinner-text { font-size: 0.9rem; color: #57606a; }
 
 /* ── Content ── */
-.content { display: flex; flex-direction: column; gap: 0.75rem; padding: 0.75rem; }
+.content { display: flex; flex-direction: column; gap: 0.75rem; padding: 0.75rem 0.75rem 120px; }
 .empty-hint { text-align: center; color: #57606a; padding: 3rem 1rem; font-size: 0.95rem; }
 
 /* ── Summary card ── */

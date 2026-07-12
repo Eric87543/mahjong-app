@@ -28,6 +28,10 @@ async function apiFetch(url: string, options?: RequestInit): Promise<unknown> {
     },
   })
   if (!res.ok) {
+    // token 過期（401）：清除本地 token，讓路由守衛踢回登入頁重新授權
+    if (res.status === 401) {
+      useAuthStore().clearToken()
+    }
     const text = await res.text()
     throw new Error(`Sheets API error ${res.status}: ${text}`)
   }
@@ -54,10 +58,13 @@ export function toDetailSheetName(sheetName: string): string {
 // 格式：YYYYMMDDNN（日期8碼 + 2碼序號，從01開始）
 export function generateSessionId(date: string, existingSessions: Session[]): string {
   const compact = date.replace(/-/g, '')  // 'YYYY-MM-DD' → 'YYYYMMDD'
-  // 找出當天已有幾個 session
+  // 找出當天現有的最大序號，下一筆從最大值 +1 開始（避免中間有缺號時衝突）
   const sameDay = existingSessions.filter(s => s.sessionId.startsWith(compact))
-  const next = sameDay.length + 1
-  return `${compact}${String(next).padStart(2, '0')}`
+  const maxSeq = sameDay.reduce((max, s) => {
+    const seq = parseInt(s.sessionId.slice(compact.length), 10)
+    return isNaN(seq) ? max : Math.max(max, seq)
+  }, 0)
+  return `${compact}${String(maxSeq + 1).padStart(2, '0')}`
 }
 
 // ─── getSessionList ──────────────────────────────────────────────────────────
@@ -67,13 +74,13 @@ export function generateSessionId(date: string, existingSessions: Session[]): st
 export async function getSessionList(
   spreadsheetId: string,
   sheetName: string,
-): Promise<{ players: string[]; sessions: Session[] }> {
+): Promise<{ players: string[]; sessions: Session[]; headerOrder: string[] }> {
   const range = encodeURIComponent(`${sheetName}!A:AZ`)
   const url = `${BASE}/v4/spreadsheets/${spreadsheetId}/values/${range}`
   const data = (await apiFetch(url)) as { values?: string[][] }
   const rows: string[][] = data.values ?? []
 
-  if (rows.length < 2) return { players: [], sessions: [] }
+  if (rows.length < 2) return { players: [], sessions: [], headerOrder: [] }
 
   const header = rows[0]
   const sessionIdIdx = header.indexOf('sessionId')
@@ -96,16 +103,17 @@ export async function getSessionList(
     const row = rows[i]
     if (row.every((c) => (c ?? '').trim() === '')) continue
 
-    // 日期（carry-forward 兼容舊格式）
+    // 日期（carry-forward 兼容舊格式，統一轉為 YYYY-MM-DD）
     const rawDate = (row[dateIdx] ?? '').trim()
     if (rawDate !== '') lastDate = rawDate
-    const date = lastDate.slice(0, 10)  // 只取 YYYY-MM-DD
+    // 兼容 '2026/01/10' 和 '2026-01-10' 兩種格式，統一轉為 YYYY-MM-DD
+    const date = lastDate.slice(0, 10).replace(/\//g, '-')
 
     // sessionId：新格式有值；舊格式沒有此欄則用日期+序號生成
     let sessionId = sessionIdIdx !== -1 ? (row[sessionIdIdx]?.trim() ?? '') : ''
     if (!sessionId) {
       // 兼容舊資料：用日期 + 行次生成暫時 sessionId
-      const compact = date.replace(/-/g, '')
+      const compact = date.replace(/[-/]/g, '')
       sessionId = `${compact}${String(sessions.filter(s => s.sessionId.startsWith(compact)).length + 1).padStart(2, '0')}`
     }
 
@@ -120,7 +128,9 @@ export async function getSessionList(
     sessions.push({ rowIndex: i + 1, sessionId, date, table, scores })
   }
 
-  return { players, sessions }
+  // 回傳 sheet 實際的 header 欄位順序，供 appendSession/updateSession 對齊欄位用
+  const headerOrder = header.map(h => h.trim()).filter(h => h !== '')
+  return { players, sessions, headerOrder }
 }
 
 // ─── sessionToRow ─────────────────────────────────────────────────────────────

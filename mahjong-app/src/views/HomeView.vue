@@ -43,7 +43,7 @@
         <section class="card shortcuts-card">
           <div class="card-title">快捷入口</div>
           <div class="shortcuts-grid">
-            <button class="shortcut-btn" @click="router.push('/record')">
+            <button v-if="authStore.isEditor" class="shortcut-btn" @click="router.push('/record')">
               <span class="shortcut-icon">📝</span>
               <span class="shortcut-label">記錄新局</span>
             </button>
@@ -89,10 +89,12 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useGoogleAuth } from '../composables/useGoogleAuth'
 import { useAppStore } from '../stores/appStore'
+import { useAuthStore } from '../stores/authStore'
 
 const router = useRouter()
 const { logout } = useGoogleAuth()
 const appStore = useAppStore()
+const authStore = useAuthStore()
 
 const loading = ref(false)
 
@@ -178,7 +180,7 @@ function handleLogout() {
   display: flex;
   flex-direction: column;
   min-height: 100vh;
-  padding-bottom: 72px;
+  padding-bottom: 120px;
   background: #f0f2f5;
 }
 

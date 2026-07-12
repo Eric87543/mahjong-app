@@ -6,8 +6,13 @@
 
     <div class="form-wrap">
 
+      <!-- 無編輯權限提示 -->
+      <div v-if="!authStore.isEditor" class="notice notice-lock">
+        🔒 你目前沒有新增紀錄的權限，請聯絡管理員。
+      </div>
+
       <!-- 未設定提示 -->
-      <div v-if="!appStore.spreadsheetId" class="notice">
+      <div v-else-if="!appStore.spreadsheetId" class="notice">
         ⚠️ 請先至「設定」頁填入 Spreadsheet ID
       </div>
 
@@ -61,11 +66,32 @@
             <span v-if="p.games > 0" class="chip-games">{{ p.games }}場</span>
           </button>
         </div>
+
+        <!-- 新增玩家 -->
+        <div v-if="!addingPlayer" class="add-player-row">
+          <button class="btn-add-player" @click="addingPlayer = true" type="button">
+            ＋ 新增玩家
+          </button>
+        </div>
+        <div v-else class="add-player-input-row">
+          <input
+            v-model="newPlayerName"
+            class="add-player-input"
+            type="text"
+            placeholder="輸入名稱"
+            maxlength="10"
+            @keyup.enter="confirmAddPlayer"
+            @keyup.esc="addingPlayer = false"
+            ref="newPlayerInputRef"
+          />
+          <button class="btn-confirm" @click="confirmAddPlayer" type="button">確認</button>
+          <button class="btn-cancel" @click="addingPlayer = false" type="button">✕</button>
+        </div>
       </div>
 
       <!-- ── 步驟 3：輸入各人得分（需先選好4人）──────────── -->
       <div class="step-card" :class="{ inactive: selectedPlayers.length < 4 }">
-        <div class="step-title">③ 輸入得分（正數=贏，負數=輸）</div>
+        <div class="step-title">③ 輸入得分</div>
 
         <div v-if="selectedPlayers.length < 4" class="hint-text">
           請先選好4位出賽玩家
@@ -73,27 +99,38 @@
         <div v-else class="score-list">
           <div v-for="p in selectedPlayers" :key="p" class="score-row">
             <span class="player-name">{{ p }}</span>
+            <button
+              class="sign-btn"
+              :class="{ negative: scores[p] !== undefined && scores[p]! < 0 }"
+              @click="toggleSign(p)"
+              type="button"
+            >{{ scores[p] !== undefined && scores[p]! < 0 ? '−' : '+' }}</button>
             <input
-              :value="scores[p] !== undefined ? scores[p] : ''"
-              @input="onInput(p, ($event.target as HTMLInputElement).value)"
-              type="number"
-              class="score-input"
+              :value="scores[p] !== undefined ? Math.abs(scores[p]!) : ''"
+              @input="onAbsInput(p, ($event.target as HTMLInputElement).value)"
+              type="text"
               inputmode="numeric"
-              placeholder="—"
+              class="score-input"
+              placeholder="0"
             />
           </div>
         </div>
 
         <!-- 總和提示 -->
-        <div v-if="participantCount >= 2" class="balance-row" :class="{ error: balance !== 0 }">
+        <div v-if="participantCount >= 2" class="balance-row" :class="{ error: !balanceOk }">
           得分總和：<strong>{{ balance > 0 ? '+' : '' }}{{ balance }}</strong>
-          <span v-if="balance !== 0"> ⚠️ 應為 0</span>
+          <span v-if="!balanceOk"> ⚠️ 應為 {{ -table }}</span>
           <span v-else> ✓</span>
         </div>
       </div>
 
       <!-- 錯誤訊息 -->
-      <div v-if="submitError" class="msg-error">❌ {{ submitError }}</div>
+      <div v-if="submitError" class="msg-error">
+        <template v-if="isPermissionError">
+          🔒 你沒有編輯此 Sheet 的權限，請聯絡管理員將你的 Google 帳號加為編輯者。
+        </template>
+        <template v-else>❌ {{ submitError }}</template>
+      </div>
 
       <!-- 送出 -->
       <button
@@ -112,12 +149,36 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, reactive, onMounted, watch } from 'vue'
+import { ref, computed, reactive, onMounted, watch, nextTick } from 'vue'
 import { useAppStore } from '@/stores/appStore'
+import { useAuthStore } from '@/stores/authStore'
 import { generateSessionId } from '@/services/sheetsService'
 import type { Session } from '@/types'
 
 const appStore = useAppStore()
+const authStore = useAuthStore()
+
+// ── 新增玩家 ─────────────────────────────────────────────
+const addingPlayer = ref(false)
+const newPlayerName = ref('')
+const newPlayerInputRef = ref<HTMLInputElement | null>(null)
+
+async function confirmAddPlayer() {
+  const name = newPlayerName.value.trim()
+  if (!name) return
+  if (!appStore.players.includes(name)) {
+    appStore.setPlayers([...appStore.players, name])
+  }
+  newPlayerName.value = ''
+  addingPlayer.value = false
+}
+
+watch(addingPlayer, async (val) => {
+  if (val) {
+    await nextTick()
+    newPlayerInputRef.value?.focus()
+  }
+})
 
 // ── 基本欄位 ─────────────────────────────────────────────
 const today = new Date().toISOString().slice(0, 10)
@@ -159,8 +220,8 @@ function togglePlayer(name: string) {
   const idx = selectedPlayers.value.indexOf(name)
   if (idx !== -1) {
     selectedPlayers.value.splice(idx, 1)
-    // 移除該玩家的得分
     delete (scores as Record<string, unknown>)[name]
+    delete (signOverride as Record<string, unknown>)[name]
   } else if (selectedPlayers.value.length < 4) {
     selectedPlayers.value.push(name)
   }
@@ -169,12 +230,33 @@ function togglePlayer(name: string) {
 // ── 各玩家得分 ────────────────────────────────────────────
 const scores = reactive<Record<string, number | undefined>>({})
 
-function onInput(player: string, val: string) {
-  if (val === '' || val === '-') {
+// 記住每位玩家的預設符號（即便尚未輸入分數也可以先切換）
+const signOverride = reactive<Record<string, -1 | 1>>({})
+
+function isNegative(player: string): boolean {
+  if (scores[player] !== undefined) return scores[player]! < 0
+  return signOverride[player] === -1
+}
+
+// 輸入絕對值（配合 +/- 按鈕使用）
+function onAbsInput(player: string, val: string) {
+  if (val === '' || val === '0') {
     delete scores[player]
+    return
+  }
+  const n = Number(val)
+  if (!isNaN(n) && n > 0) {
+    const sign = isNegative(player) ? -1 : 1
+    scores[player] = sign * n
+  }
+}
+
+// 切換正負號（未填分數時也可切換，記入 signOverride）
+function toggleSign(player: string) {
+  if (scores[player] !== undefined) {
+    scores[player] = -(scores[player] as number)
   } else {
-    const n = Number(val)
-    if (!isNaN(n)) scores[player] = n
+    signOverride[player] = signOverride[player] === -1 ? 1 : -1
   }
 }
 
@@ -186,17 +268,25 @@ const balance = computed(() =>
   selectedPlayers.value.reduce((acc: number, p) => acc + (scores[p] ?? 0), 0)
 )
 
+// 台費是莊家抽的，四人得分總和應為 -台費
+const balanceOk = computed(() => balance.value === -table.value)
+
 const canSubmit = computed(() =>
   !!season.value &&
   !!date.value &&
   selectedPlayers.value.length === 4 &&
-  participantCount.value >= 2
+  participantCount.value >= 2 &&
+  balanceOk.value
 )
 
 // ── 送出 ─────────────────────────────────────────────────
 const submitting = ref(false)
 const submitError = ref('')
 const showToast = ref(false)
+
+const isPermissionError = computed(() =>
+  submitError.value.includes('403')
+)
 
 async function submit() {
   submitting.value = true
@@ -282,10 +372,16 @@ watch(season, async (s) => {
 .form-wrap {
   max-width: 520px;
   margin: 0 auto;
-  padding: 1rem;
+  padding: 1rem 1rem 90px;
   display: flex;
   flex-direction: column;
   gap: 0.875rem;
+}
+
+.notice-lock {
+  background: #fef2f2;
+  border-color: #fca5a5;
+  color: #991b1b;
 }
 
 .notice {
@@ -398,6 +494,65 @@ watch(season, async (s) => {
 .player-chip.selected .chip-name { color: #1d4ed8; }
 .player-chip.selected .chip-games { color: #93c5fd; }
 
+/* ── 新增玩家 ── */
+.add-player-row {
+  display: flex;
+}
+.btn-add-player {
+  flex: 1;
+  padding: 0.4rem 0.5rem;
+  border: 1.5px dashed #d1d5db;
+  border-radius: 8px;
+  background: transparent;
+  color: #6b7280;
+  font-size: 0.82rem;
+  font-weight: 500;
+  cursor: pointer;
+  text-align: center;
+}
+.btn-add-player:active { background: #f3f4f6; }
+
+.add-player-input-row {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+}
+.add-player-input {
+  flex: 1;
+  padding: 0.35rem 0.6rem;
+  border: 1.5px solid #3b82d4;
+  border-radius: 7px;
+  font-size: 0.9rem;
+  min-height: 36px;
+  outline: none;
+  background: #fff;
+  color: #1f2328;
+}
+.btn-confirm {
+  padding: 0.35rem 0.65rem;
+  background: #3b82d4;
+  color: #fff;
+  border: none;
+  border-radius: 7px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  min-height: 36px;
+  white-space: nowrap;
+}
+.btn-confirm:active { background: #2563ae; }
+.btn-cancel {
+  padding: 0.35rem 0.5rem;
+  background: #f3f4f6;
+  color: #6b7280;
+  border: 1px solid #e5e7eb;
+  border-radius: 7px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  min-height: 36px;
+}
+.btn-cancel:active { background: #e5e7eb; }
+
 /* ── Score list ── */
 .score-list {
   display: flex;
@@ -409,28 +564,66 @@ watch(season, async (s) => {
 .score-row {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
-  padding: 0.45rem 0.75rem;
+  gap: 0.4rem;
+  padding: 0.3rem 0.6rem;
   border-bottom: 1px solid #f3f4f6;
 }
 .score-row:last-child { border-bottom: none; }
 .player-name {
-  width: 72px;
-  font-size: 0.9rem;
+  flex: 1;
+  font-size: 0.88rem;
   font-weight: 600;
   color: #1f2328;
-  flex-shrink: 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
+
+/* ── 正負號按鈕 ── */
+.sign-btn {
+  flex-shrink: 0;
+  width: 38px;
+  height: 38px;
+  border-radius: 8px;
+  border: 2px solid #d1d5db;
+  background: #f9fafb;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: border-color 0.15s, background 0.15s;
+}
+.sign-btn:active { opacity: 0.75; }
+.sign-btn.negative {
+  border-color: #fca5a5;
+  background: #fef2f2;
+}
+.sign-symbol {
+  font-size: 1.25rem;
+  font-weight: 700;
+  line-height: 1;
+  color: #374151;
+  user-select: none;
+}
+.sign-btn.negative .sign-symbol {
+  color: #dc2626;
+}
+
 .score-input {
-  flex: 1;
-  padding: 0.4rem 0.6rem;
+  width: 80px;
+  flex-shrink: 0;
+  padding: 0.3rem 0.5rem;
   border: 1px solid #e5e7eb;
-  border-radius: 6px;
+  border-radius: 7px;
   font-size: 1rem;
-  min-height: 42px;
+  font-weight: 600;
+  min-height: 38px;
   outline: none;
   text-align: right;
   background: #f9fafb;
+  color: #1f2328;
+  scroll-margin-top: 120px;
 }
 .score-input:focus { border-color: #3b82d4; background: #fff; }
 
